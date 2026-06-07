@@ -25,6 +25,13 @@ const TG = /^(.{1,40}?),\s*\[([^\]]+)\]:\s*$/;
 // Generic "Name: text" — only used as a fallback; name kept short & tame
 const GENERIC = /^([A-Za-z0-9][\w .'\-]{0,28}):\s+(\S[\s\S]*)$/;
 
+// Invisible bidi / format characters that WhatsApp & Telegram exports inject and
+// that break line matching: LRM/RLM, bidi embeddings/overrides, isolates, ZWSP,
+// BOM/word-joiner. Stripped before parsing.
+const INVISIBLE = /[​‎‏‪-‮⁠⁦-⁩﻿]/g;
+// Odd spaces (NBSP, narrow no-break space WhatsApp uses before AM/PM, etc.) -> space.
+const ODD_SPACE = /[    　]/g;
+
 const SYSTEM_HINTS = [
   "end-to-end encrypted",
   "Messages and calls are",
@@ -39,7 +46,8 @@ function isSystem(line: string): boolean {
 }
 
 export function parseConversation(raw: string): ParsedConversation {
-  const lines = raw.replace(/\r/g, "").split("\n");
+  const cleaned = raw.replace(INVISIBLE, "").replace(ODD_SPACE, " ");
+  const lines = cleaned.replace(/\r/g, "").split("\n");
   const messages: ParsedMessage[] = [];
   let cur: ParsedMessage | null = null;
   const push = () => {
