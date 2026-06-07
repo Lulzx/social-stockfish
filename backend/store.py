@@ -17,12 +17,13 @@ _DDL = """
 CREATE TABLE IF NOT EXISTS analyses (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at      TEXT    NOT NULL,
+    kind            TEXT    DEFAULT 'analyze',  -- 'analyze' | 'review'
     contact         TEXT,
     goal            TEXT    NOT NULL,
     messages        TEXT    NOT NULL,   -- JSON: [{sender, text}]
     persona         TEXT,
-    ranked          TEXT,               -- JSON: [{id, text, strategy, score, samples}]
-    best_score      REAL,
+    ranked          TEXT,               -- JSON: ranked moves (analyze) or review rows
+    best_score      REAL,               -- best move EV (analyze) or final eval (review)
     num_candidates  INTEGER,
     num_rollouts    INTEGER,
     duration_ms     INTEGER,
@@ -47,16 +48,21 @@ class Store:
     def _init(self) -> None:
         with self._connect() as conn:
             conn.executescript(_DDL)
+            # migrate older DBs that predate the `kind` column
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(analyses)")}
+            if "kind" not in cols:
+                conn.execute("ALTER TABLE analyses ADD COLUMN kind TEXT DEFAULT 'analyze'")
 
     def _save_sync(self, rec: dict[str, Any]) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """INSERT INTO analyses
-                   (created_at, contact, goal, messages, persona, ranked, best_score,
+                   (created_at, kind, contact, goal, messages, persona, ranked, best_score,
                     num_candidates, num_rollouts, duration_ms, candidate_model, rollout_model)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     datetime.now(timezone.utc).isoformat(),
+                    rec.get("kind", "analyze"),
                     rec.get("contact"),
                     rec.get("goal"),
                     json.dumps(rec.get("messages", []), ensure_ascii=False),

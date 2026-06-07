@@ -10,8 +10,10 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
+import httpx  # noqa: E402
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from engine import Engine  # noqa: E402
@@ -52,6 +54,30 @@ async def history(limit: int = 20) -> dict:
     return {"count": await store.count(), "items": await store.recent(limit)}
 
 
+# --- Coach voice: proxy to the Supertonic TTS server -------------------------
+SUPERTONIC_URL = os.environ.get("SUPERTONIC_URL", "http://127.0.0.1:7788")
+TTS_VOICE = os.environ.get("TTS_VOICE", "M2")  # "James" — built-in male voice
+
+
+@app.post("/tts")
+async def tts(req: Request) -> Response:
+    body = await req.json()
+    text = (body.get("text") or "").strip()[:600]
+    if not text:
+        return Response(status_code=400)
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as c:
+            r = await c.post(
+                f"{SUPERTONIC_URL}/v1/audio/speech",
+                json={"model": "supertonic-3", "input": text,
+                      "voice": body.get("voice") or TTS_VOICE, "speed": 1.05},
+            )
+        r.raise_for_status()
+    except Exception:
+        return Response(status_code=503)  # TTS unavailable — UI falls back silently
+    return Response(content=r.content, media_type=r.headers.get("content-type", "audio/wav"))
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -61,7 +87,8 @@ async def ws(websocket: WebSocket) -> None:
     try:
         while True:
             req = await websocket.receive_json()
-            if req.get("type") != "analyze":
+            kind = req.get("type")
+            if kind not in ("analyze", "review"):
                 continue
             messages = req.get("messages", [])
             goal = (req.get("goal") or "").strip()
@@ -70,6 +97,30 @@ async def ws(websocket: WebSocket) -> None:
                 await websocket.send_json(
                     {"type": "error", "text": "A conversation goal is required."}
                 )
+                continue
+
+            if kind == "review":
+                t0 = time.monotonic()
+                try:
+                    result = await engine.review(messages, goal, websocket.send_json)
+                except Exception as e:
+                    await websocket.send_json({"type": "error", "text": f"Engine error: {e}"})
+                    continue
+                try:
+                    await store.save(
+                        {
+                            "kind": "review", "contact": contact, "goal": goal,
+                            "messages": messages, "persona": None,
+                            "ranked": result.get("rows"),
+                            "best_score": result.get("finalEval"),
+                            "num_candidates": 0, "num_rollouts": 0,
+                            "duration_ms": int((time.monotonic() - t0) * 1000),
+                            "candidate_model": engine.candidate_model,
+                            "rollout_model": engine.rollout_model,
+                        }
+                    )
+                except Exception:
+                    pass
                 continue
 
             # Capture the outcome as events stream past, to persist after the run.

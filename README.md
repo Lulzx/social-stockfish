@@ -34,6 +34,19 @@ lists**, so a full analysis runs in **~1–2 seconds**. A token-bucket rate limi
 + bounded concurrency + 429 backoff in `backend/llm.py` keep it within provider
 limits *always*. Em dashes are stripped from generated replies.
 
+## Game Review (analyze a conversation like a PGN)
+
+Paste a **WhatsApp or Telegram** export (the parser handles their timestamp
+formats, plus plain `Name: message`), pick which participant is you, set a goal,
+and hit **Game Review**. One model call returns the **eval after every message**
+(the eval curve), and each of your messages is graded like a chess move —
+**Brilliant / Great / Best / Excellent / Good / Inaccuracy / Mistake / Blunder** —
+from how much it swung the position once the other person reacted. You get the
+eval graph, an accuracy score, a move-count breakdown, and a **coach ("James")**
+who steps through your moves with a spoken explanation (Supertonic TTS) and a
+suggested better move. The same calibrated **position eval** drives the
+Stockfish-style eval bar, so a losing conversation actually reads as losing.
+
 ## Stack
 
 - **Backend** — FastAPI + WebSocket streaming; a generic OpenAI-compatible async

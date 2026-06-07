@@ -1,25 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@heroui/react";
-import type { Message, Sender } from "../types";
+import type { Message, ReviewRow, Sender } from "../types";
+import { MoveBadge } from "./MoveBadge";
 
 interface Props {
   contact: string;
   unread: number;
   messages: Message[];
+  review?: ReviewRow[] | null;
+  activeIndex?: number | null;
   onContactChange: (name: string) => void;
   onSend: (text: string, sender: Sender) => void;
 }
 
-export function ChatPane({ contact, unread, messages, onContactChange, onSend }: Props) {
+export function ChatPane({
+  contact,
+  unread,
+  messages,
+  review,
+  activeIndex,
+  onContactChange,
+  onSend,
+}: Props) {
   const [draft, setDraft] = useState("");
   // Default: a typed message is from the OTHER person (you read their texts and
   // the engine computes your reply). Toggle to send as yourself instead.
   const [sender, setSender] = useState<Sender>("them");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (activeIndex != null)
+      activeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeIndex]);
 
   const submit = () => {
     const t = draft.trim();
@@ -81,22 +98,27 @@ export function ChatPane({ contact, unread, messages, onContactChange, onSend }:
             const mine = m.sender === "me";
             const prev = messages[i - 1];
             const grouped = prev && prev.sender === m.sender;
+            const rev = review?.[i];
+            const cls = rev?.classification;
+            const active = activeIndex === i;
             return (
               <div
                 key={m.id}
-                className={`flex ${mine ? "justify-end" : "justify-start"} ${
+                ref={active ? activeRef : undefined}
+                className={`flex items-end gap-1.5 ${mine ? "justify-end" : "justify-start"} ${
                   grouped ? "" : "mt-1.5"
                 }`}
               >
+                {mine && cls && <MoveBadge c={cls} size={18} />}
                 <div
-                  className={`max-w-[78%] rounded-[18px] px-3.5 py-2 text-[14.5px] leading-snug ${
-                    mine
-                      ? "bg-[#0a84ff] text-white"
-                      : "bg-[#e9e9eb] text-black"
-                  }`}
+                  className={`max-w-[74%] rounded-[18px] px-3.5 py-2 text-[14.5px] leading-snug transition ${
+                    mine ? "bg-[#0a84ff] text-white" : "bg-[#e9e9eb] text-black"
+                  } ${active ? "ring-2 ring-offset-1" : ""}`}
+                  style={active && cls ? { boxShadow: `0 0 0 2px ${cls.color}` } : undefined}
                 >
                   {m.text}
                 </div>
+                {!mine && cls && <MoveBadge c={cls} size={18} />}
               </div>
             );
           })}

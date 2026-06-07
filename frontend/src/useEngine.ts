@@ -4,6 +4,7 @@ import type {
   EnginePhase,
   Message,
   RankedResult,
+  ReviewRow,
   RolloutDot,
   ServerEvent,
 } from "./types";
@@ -12,26 +13,35 @@ const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.ho
 
 export interface EngineState {
   connected: boolean;
+  mode: "analyze" | "review";
   phase: EnginePhase;
   status: string;
   persona: string;
+  positionEval: number | null;
+  positionNote: string;
   candidates: Candidate[];
   ranked: RankedResult[];
-  // full result buffers (targets); the UI reveals these progressively
   rollouts: RolloutDot[];
   stateNodes: number;
+  review: ReviewRow[] | null;
+  finalEval: number | null;
   error: string | null;
 }
 
 const initial: EngineState = {
   connected: false,
+  mode: "analyze",
   phase: "idle",
   status: "",
   persona: "",
+  positionEval: null,
+  positionNote: "",
   candidates: [],
   ranked: [],
   rollouts: [],
   stateNodes: 0,
+  review: null,
+  finalEval: null,
   error: null,
 };
 
@@ -44,7 +54,6 @@ export function useEngine() {
     if (wsRef.current && wsRef.current.readyState <= 1) return;
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
-
     ws.onopen = () => setState((s) => ({ ...s, connected: true, error: null }));
     ws.onclose = () => {
       setState((s) => ({ ...s, connected: false }));
@@ -65,31 +74,59 @@ export function useEngine() {
     };
   }, [connect]);
 
-  const analyze = useCallback((messages: Message[], goal: string, contact?: string) => {
+  const send = (payload: object) => {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN || !goal.trim()) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(payload));
+    return true;
+  };
+
+  const analyze = useCallback((messages: Message[], goal: string, contact?: string) => {
+    if (!goal.trim()) return;
     setState((s) => ({
       ...s,
+      mode: "analyze",
       phase: "candidates",
-      status: "Generating candidate responses...",
+      status: "Evaluating the position...",
       persona: "",
+      positionEval: null,
+      positionNote: "",
       candidates: [],
       ranked: [],
       rollouts: [],
       stateNodes: 0,
+      review: null,
+      finalEval: null,
       error: null,
     }));
-    ws.send(
-      JSON.stringify({
-        type: "analyze",
-        goal,
-        contact,
-        messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
-      })
-    );
+    send({
+      type: "analyze",
+      goal,
+      contact,
+      messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
+    });
   }, []);
 
-  return { state, analyze };
+  const review = useCallback((messages: Message[], goal: string, contact?: string) => {
+    if (!goal.trim() || !messages.length) return;
+    setState((s) => ({
+      ...s,
+      mode: "review",
+      phase: "simulating",
+      status: "Reviewing the game...",
+      review: null,
+      finalEval: null,
+      error: null,
+    }));
+    send({
+      type: "review",
+      goal,
+      contact,
+      messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
+    });
+  }, []);
+
+  return { state, analyze, review };
 }
 
 function reduce(s: EngineState, ev: ServerEvent): EngineState {
@@ -100,6 +137,8 @@ function reduce(s: EngineState, ev: ServerEvent): EngineState {
         status: ev.text,
         phase: ev.text.toLowerCase().includes("monte") ? "simulating" : s.phase,
       };
+    case "position":
+      return { ...s, positionEval: ev.positionEval, positionNote: ev.note, persona: ev.persona };
     case "persona":
       return { ...s, persona: ev.persona, phase: "candidates" };
     case "candidate":
@@ -112,7 +151,9 @@ function reduce(s: EngineState, ev: ServerEvent): EngineState {
         stateNodes: s.stateNodes + ev.states,
       };
     case "results":
-      return { ...s, ranked: ev.ranked };
+      return { ...s, ranked: ev.ranked, positionEval: ev.positionEval };
+    case "review":
+      return { ...s, review: ev.rows, finalEval: ev.finalEval, phase: "done", status: "" };
     case "done":
       return { ...s, phase: "done", status: "" };
     case "error":
