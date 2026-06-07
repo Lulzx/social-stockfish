@@ -60,7 +60,7 @@ export default function App() {
           goal={goal}
           onGoalChange={setGoal}
           onPick={pick}
-          onAnalyze={() => analyze(messages, goal)}
+          onAnalyze={() => analyze(messages, goal, contact)}
         />
       </div>
     </div>

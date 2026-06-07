@@ -12,6 +12,13 @@ backend/static/
 __pycache__/
 *.pyc
 
+# sqlite database (conversation store)
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+
 # secrets / env
 .env
 backend/.env

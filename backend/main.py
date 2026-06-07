@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,12 +16,14 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from engine import Engine  # noqa: E402
 from llm import LLMClient  # noqa: E402
+from store import Store  # noqa: E402
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.client = LLMClient()
     app.state.engine = Engine(app.state.client)
+    app.state.store = Store()
     yield
     await app.state.client.aclose()
 
@@ -43,13 +46,17 @@ async def health() -> dict:
     }
 
 
+@app.get("/history")
+async def history(limit: int = 20) -> dict:
+    store: Store = app.state.store
+    return {"count": await store.count(), "items": await store.recent(limit)}
+
+
 @app.websocket("/ws")
 async def ws(websocket: WebSocket) -> None:
     await websocket.accept()
     engine: Engine = websocket.app.state.engine
-
-    async def emit(event: dict) -> None:
-        await websocket.send_json(event)
+    store: Store = websocket.app.state.store
 
     try:
         while True:
@@ -58,13 +65,54 @@ async def ws(websocket: WebSocket) -> None:
                 continue
             messages = req.get("messages", [])
             goal = (req.get("goal") or "").strip()
+            contact = (req.get("contact") or "").strip() or None
             if not goal:
-                await emit({"type": "error", "text": "A conversation goal is required."})
+                await websocket.send_json(
+                    {"type": "error", "text": "A conversation goal is required."}
+                )
                 continue
+
+            # Capture the outcome as events stream past, to persist after the run.
+            cap = {"persona": None, "candidates": 0, "rollouts": 0, "ranked": None}
+
+            async def emit(event: dict) -> None:
+                t = event.get("type")
+                if t == "persona":
+                    cap["persona"] = event.get("persona")
+                elif t == "candidate":
+                    cap["candidates"] += 1
+                elif t == "rollout":
+                    cap["rollouts"] += 1
+                elif t == "results" and event.get("final"):
+                    cap["ranked"] = event.get("ranked")
+                await websocket.send_json(event)
+
+            t0 = time.monotonic()
             try:
                 await engine.analyze(messages, goal, emit)
             except Exception as e:  # surface engine/model errors to the UI
-                await emit({"type": "error", "text": f"Engine error: {e}"})
+                await websocket.send_json({"type": "error", "text": f"Engine error: {e}"})
+                continue
+
+            ranked = cap["ranked"]
+            try:
+                await store.save(
+                    {
+                        "contact": contact,
+                        "goal": goal,
+                        "messages": messages,
+                        "persona": cap["persona"],
+                        "ranked": ranked,
+                        "best_score": ranked[0]["score"] if ranked else None,
+                        "num_candidates": cap["candidates"],
+                        "num_rollouts": cap["rollouts"],
+                        "duration_ms": int((time.monotonic() - t0) * 1000),
+                        "candidate_model": engine.candidate_model,
+                        "rollout_model": engine.rollout_model,
+                    }
+                )
+            except Exception:  # never let persistence break the live session
+                pass
     except WebSocketDisconnect:
         return
 

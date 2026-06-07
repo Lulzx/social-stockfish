@@ -65,7 +65,7 @@ export function useEngine() {
     };
   }, [connect]);
 
-  const analyze = useCallback((messages: Message[], goal: string) => {
+  const analyze = useCallback((messages: Message[], goal: string, contact?: string) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !goal.trim()) return;
     setState((s) => ({
@@ -83,6 +83,7 @@ export function useEngine() {
       JSON.stringify({
         type: "analyze",
         goal,
+        contact,
         messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
       })
     );
