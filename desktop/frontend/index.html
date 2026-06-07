@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:5173 ws://127.0.0.1:5173" />
+    <title>Desktop</title>
+  </head>
+  <body>
+    <main id="app">
+      <p class="eyebrow">zero-native + Vite</p>
+      <h1>Desktop</h1>
+      <p class="lede">A minimal web frontend running inside the system WebView.</p>
+      <div class="card">
+        <span>Native bridge</span>
+        <strong id="bridge-status">checking...</strong>
+      </div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

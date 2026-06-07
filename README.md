@@ -94,6 +94,13 @@ The client is provider-agnostic — point `LLM_BASE_URL`/`*_MODEL` at any
 OpenAI-compatible API (MiniMax-M3, OpenAI, etc.); see `.env.example` for a
 MiniMax example.
 
+## macOS app
+
+A native macOS build lives in [`desktop/`](desktop/) — a ~800 KB
+[zero-native](https://zero-native.dev) (Zig + system `WKWebView`) shell that loads
+the deployed site, so every backend feature works unchanged. Build it with
+`cd desktop && zig build run`; see `desktop/README.md` for packaging a `.app`/`.dmg`.
+
 ## Deployment
 
 The built SPA is copied to `backend/static/` and served by FastAPI alongside

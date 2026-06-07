@@ -1,0 +1,32 @@
+.{
+    .id ="space.lulzx.social-stockfish",
+    .name ="social-stockfish",
+    .display_name ="Social Stockfish",
+    .version = "0.1.0",
+    .icons = .{ "assets/icon.icns" },
+    .platforms = .{ "macos", "linux" },
+    .permissions = .{},
+    .capabilities = .{ "webview" },
+    .frontend = .{
+        .dist ="frontend/dist",
+        .entry = "index.html",
+        .spa_fallback = true,
+        .dev = .{
+            .url ="https://chat.lulzx.space/",
+            .command = .{ "true" },
+            .ready_path = "/",
+            .timeout_ms = 30000,
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{ "https://chat.lulzx.space", "https://checkout.stripe.com", "https://js.stripe.com" },
+            .external_links = .{ .action = "allow" },
+        },
+    },
+    .web_engine = "system",
+    .cef = .{ .dir = "third_party/cef/macos", .auto_install = false },
+    .windows = .{
+        .{ .label = "main", .title ="Social Stockfish", .width = 1200, .height = 820, .restore_state = true },
+    },
+}
