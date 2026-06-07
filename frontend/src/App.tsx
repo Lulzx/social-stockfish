@@ -29,6 +29,7 @@ export default function App() {
   const [contact, setContact] = useState("Annie");
   const [pasteOpen, setPasteOpen] = useState(false);
   const [activeMove, setActiveMove] = useState<number | null>(null);
+  const [tab, setTab] = useState<"chat" | "engine">("chat");
   const { state: engine, analyze, review } = useEngine();
 
   // Analysis runs only on demand (Analyze / Game Review buttons), never automatically.
@@ -41,6 +42,17 @@ export default function App() {
     setMessages(msgs);
     setContact(them);
     setActiveMove(null);
+    setTab("chat");
+  };
+
+  // On mobile, jump to the engine tab whenever analysis/review starts.
+  const runAnalyze = () => {
+    setTab("engine");
+    analyze(messages, goal, contact);
+  };
+  const runReview = () => {
+    setTab("engine");
+    review(messages, goal, contact);
   };
 
   // The Stockfish-style eval bar shows the current position eval (how you're
@@ -53,10 +65,34 @@ export default function App() {
   const reviewing = engine.mode === "review" && !!engine.review;
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white">
-      <EvalBar score={evalScore} />
+    <div className="flex h-[100dvh] w-screen flex-col overflow-hidden bg-white md:flex-row">
+      {/* desktop: vertical eval bar on the far left */}
+      <EvalBar score={evalScore} className="hidden md:block" />
+
+      {/* mobile: horizontal eval bar + tab switcher */}
+      <div className="md:hidden">
+        <EvalBar score={evalScore} orientation="horizontal" />
+        <div className="flex border-b border-default-200 bg-white text-[13px] font-semibold">
+          {(["chat", "engine"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2.5 transition ${
+                tab === t
+                  ? "border-b-2 border-[#0a84ff] text-[#0a84ff]"
+                  : "text-default-400"
+              }`}
+            >
+              {t === "chat" ? contact || "Chat" : "Social Stockfish"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* chat pane */}
-      <div className="w-1/2 min-w-[320px] border-r border-default-200">
+      <div
+        className={`${tab === "chat" ? "flex" : "hidden"} min-h-0 w-full flex-1 md:flex md:w-1/2 md:min-w-[320px] md:flex-none md:border-r md:border-default-200`}
+      >
         <ChatPane
           contact={contact}
           unread={5}
@@ -67,15 +103,16 @@ export default function App() {
           onSend={send}
         />
       </div>
+
       {/* engine pane */}
-      <div className="min-w-0 flex-1">
+      <div className={`${tab === "engine" ? "flex" : "hidden"} min-h-0 w-full flex-1 md:flex md:min-w-0`}>
         <EnginePane
           engine={engine}
           goal={goal}
           onGoalChange={setGoal}
           onPick={pick}
-          onAnalyze={() => analyze(messages, goal, contact)}
-          onReview={() => review(messages, goal, contact)}
+          onAnalyze={runAnalyze}
+          onReview={runReview}
           onPaste={() => setPasteOpen(true)}
           onActiveMove={setActiveMove}
         />

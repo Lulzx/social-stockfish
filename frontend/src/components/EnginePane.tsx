@@ -54,7 +54,7 @@ export function EnginePane({
   const showReview = reviewing && engine.review && engine.review.length > 0;
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto bg-[#f5f5f7] px-5 py-4">
+    <div className="flex h-full w-full flex-col overflow-y-auto bg-[#f5f5f7] px-4 py-4 sm:px-5">
       {/* header */}
       <div className="relative mb-5 flex flex-col items-center pt-2">
         <span

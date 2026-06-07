@@ -46,7 +46,7 @@ export function ChatPane({
   };
 
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full w-full flex-col bg-white">
       {/* contact header */}
       <div className="relative flex h-[62px] items-center justify-between border-b border-default-200 px-4">
         {/* back + unread badge */}
