@@ -57,5 +57,6 @@ export type ServerEvent =
   | { type: "results"; ranked: RankedResult[]; final?: boolean; positionEval: number }
   | { type: "review"; rows: ReviewRow[]; finalEval: number; goal: string }
   | { type: "reviewSaved"; id: number }
+  | { type: "paywall"; feature: string; reviewsUsed: number; freeReviews: number }
   | { type: "done" }
   | { type: "error"; text: string };

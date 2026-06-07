@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { deviceId } from "./lib";
 import type {
   Candidate,
   EnginePhase,
@@ -26,6 +27,7 @@ export interface EngineState {
   review: ReviewRow[] | null;
   finalEval: number | null;
   reviewId: number | null;
+  paywall: string | null; // feature name when a free limit is hit
   error: string | null;
 }
 
@@ -44,6 +46,7 @@ const initial: EngineState = {
   review: null,
   finalEval: null,
   reviewId: null,
+  paywall: null,
   error: null,
 };
 
@@ -83,51 +86,64 @@ export function useEngine() {
     return true;
   };
 
-  const analyze = useCallback((messages: Message[], goal: string, contact?: string) => {
-    if (!goal.trim()) return;
-    setState((s) => ({
-      ...s,
-      mode: "analyze",
-      phase: "candidates",
-      status: "Evaluating the position...",
-      persona: "",
-      positionEval: null,
-      positionNote: "",
-      candidates: [],
-      ranked: [],
-      rollouts: [],
-      stateNodes: 0,
-      review: null,
-      finalEval: null,
-      error: null,
-    }));
-    send({
-      type: "analyze",
-      goal,
-      contact,
-      messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
-    });
-  }, []);
+  const analyze = useCallback(
+    (messages: Message[], goal: string, contact?: string, store = false) => {
+      if (!goal.trim()) return;
+      setState((s) => ({
+        ...s,
+        mode: "analyze",
+        phase: "candidates",
+        status: "Evaluating the position...",
+        persona: "",
+        positionEval: null,
+        positionNote: "",
+        candidates: [],
+        ranked: [],
+        rollouts: [],
+        stateNodes: 0,
+        review: null,
+        finalEval: null,
+        reviewId: null,
+        paywall: null,
+        error: null,
+      }));
+      send({
+        type: "analyze",
+        goal,
+        contact,
+        store,
+        device: deviceId(),
+        messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
+      });
+    },
+    []
+  );
 
-  const review = useCallback((messages: Message[], goal: string, contact?: string) => {
-    if (!goal.trim() || !messages.length) return;
-    setState((s) => ({
-      ...s,
-      mode: "review",
-      phase: "simulating",
-      status: "Reviewing the game...",
-      review: null,
-      finalEval: null,
-      reviewId: null,
-      error: null,
-    }));
-    send({
-      type: "review",
-      goal,
-      contact,
-      messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
-    });
-  }, []);
+  const review = useCallback(
+    (messages: Message[], goal: string, contact?: string, store = false) => {
+      if (!goal.trim() || !messages.length) return;
+      setState((s) => ({
+        ...s,
+        mode: "review",
+        phase: "simulating",
+        status: "Reviewing the game...",
+        review: null,
+        finalEval: null,
+        reviewId: null,
+        paywall: null,
+        error: null,
+      }));
+      send({
+        type: "review",
+        goal,
+        contact,
+        store,
+        device: deviceId(),
+        messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
+      });
+    },
+    []
+  );
 
   // Load a previously stored review (e.g. opened from a shared link).
   const loadReview = useCallback(
@@ -184,6 +200,8 @@ function reduce(s: EngineState, ev: ServerEvent): EngineState {
       return { ...s, review: ev.rows, finalEval: ev.finalEval, phase: "done", status: "" };
     case "reviewSaved":
       return { ...s, reviewId: ev.id };
+    case "paywall":
+      return { ...s, paywall: ev.feature, phase: "idle", status: "" };
     case "done":
       return { ...s, phase: "done", status: "" };
     case "error":

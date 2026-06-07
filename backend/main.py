@@ -1,6 +1,9 @@
 """Social Stockfish backend — FastAPI + WebSocket streaming engine."""
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 import time
 from contextlib import asynccontextmanager
@@ -92,9 +95,105 @@ SUPERTONIC_URL = os.environ.get("SUPERTONIC_URL", "http://127.0.0.1:7788")
 TTS_VOICE = os.environ.get("TTS_VOICE", "M2")  # "James" — built-in male voice
 
 
+# --- Monetization: free-tier limits + Pro entitlement (per device) ----------
+FREE_REVIEWS = int(os.environ.get("FREE_REVIEWS", "2"))
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+APP_URL = os.environ.get("APP_URL", "https://chat.lulzx.space")
+
+
+@app.get("/entitlement")
+async def entitlement(device: str = "") -> dict:
+    store: Store = app.state.store
+    ent = await store.entitlement(device) if device else {"pro": False, "reviews_used": 0}
+    return {
+        "pro": ent["pro"],
+        "reviewsUsed": ent["reviews_used"],
+        "freeReviews": FREE_REVIEWS,
+        "billingEnabled": bool(STRIPE_SECRET_KEY and STRIPE_PRICE_ID),
+    }
+
+
+@app.post("/checkout")
+async def checkout(req: Request) -> dict:
+    """Create a Stripe Checkout session for Pro. Activates when STRIPE_* are set."""
+    if not (STRIPE_SECRET_KEY and STRIPE_PRICE_ID):
+        raise HTTPException(status_code=501, detail="Billing not configured yet")
+    body = await req.json()
+    device = (body.get("device") or "").strip()
+    if not device:
+        raise HTTPException(status_code=400, detail="device required")
+    data = {
+        "mode": "subscription",
+        "line_items[0][price]": STRIPE_PRICE_ID,
+        "line_items[0][quantity]": "1",
+        "client_reference_id": device,
+        "success_url": f"{APP_URL}/?pro=1",
+        "cancel_url": f"{APP_URL}/?upgrade=cancel",
+    }
+    async with httpx.AsyncClient(timeout=20.0) as c:
+        r = await c.post(
+            "https://api.stripe.com/v1/checkout/sessions",
+            data=data, auth=(STRIPE_SECRET_KEY, ""),
+        )
+    if r.status_code >= 400:
+        raise HTTPException(status_code=502, detail="Stripe error")
+    return {"url": r.json().get("url")}
+
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(req: Request) -> dict:
+    payload = await req.body()
+    if STRIPE_WEBHOOK_SECRET:
+        sig = req.headers.get("stripe-signature", "")
+        parts = dict(p.split("=", 1) for p in sig.split(",") if "=" in p)
+        signed = f"{parts.get('t','')}.{payload.decode()}".encode()
+        expected = hmac.new(STRIPE_WEBHOOK_SECRET.encode(), signed, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, parts.get("v1", "")):
+            raise HTTPException(status_code=400, detail="bad signature")
+    event = json.loads(payload)
+    if event.get("type") == "checkout.session.completed":
+        obj = event["data"]["object"]
+        device = obj.get("client_reference_id")
+        if device:
+            await app.state.store.set_pro(device, obj.get("customer"))
+    return {"ok": True}
+
+
+@app.post("/waitlist")
+async def waitlist(req: Request) -> dict:
+    body = await req.json()
+    email = (body.get("email") or "").strip()
+    if "@" not in email or len(email) > 200:
+        raise HTTPException(status_code=400, detail="valid email required")
+    added = await app.state.store.add_waitlist(email, body.get("note"))
+    return {"ok": True, "added": added}
+
+
+@app.post("/share")
+async def share(req: Request) -> dict:
+    """Explicitly persist a review so it can be shared (sharing = consent to store)."""
+    body = await req.json()
+    store: Store = app.state.store
+    rid = await store.save({
+        "kind": "review", "contact": body.get("contact"), "goal": body.get("goal") or "",
+        "messages": body.get("messages", []), "persona": None,
+        "ranked": body.get("rows"), "best_score": body.get("finalEval"),
+        "num_candidates": 0, "num_rollouts": 0, "duration_ms": 0,
+        "candidate_model": None, "rollout_model": None,
+    })
+    return {"id": rid}
+
+
 @app.post("/tts")
 async def tts(req: Request) -> Response:
     body = await req.json()
+    # Coach voice is a Pro perk.
+    device = (body.get("device") or "").strip()
+    ent = await app.state.store.entitlement(device) if device else {"pro": False}
+    if not ent["pro"]:
+        return Response(status_code=402)
     text = (body.get("text") or "").strip()[:600]
     if not text:
         return Response(status_code=400)
@@ -132,29 +231,40 @@ async def ws(websocket: WebSocket) -> None:
                 )
                 continue
 
+            device = (req.get("device") or "").strip()
+            opt_in_store = bool(req.get("store"))
+
             if kind == "review":
+                # Game Review is the premium hook: free up to FREE_REVIEWS per device.
+                ent = await store.entitlement(device) if device else {"pro": False, "reviews_used": 0}
+                if not ent["pro"] and ent["reviews_used"] >= FREE_REVIEWS:
+                    await websocket.send_json({
+                        "type": "paywall", "feature": "review",
+                        "reviewsUsed": ent["reviews_used"], "freeReviews": FREE_REVIEWS,
+                    })
+                    continue
                 t0 = time.monotonic()
                 try:
                     result = await engine.review(messages, goal, websocket.send_json)
                 except Exception as e:
                     await websocket.send_json({"type": "error", "text": f"Engine error: {e}"})
                     continue
-                try:
-                    rid = await store.save(
-                        {
+                if device and not ent["pro"]:
+                    await store.bump_review(device)
+                if opt_in_store:  # privacy: persist only when the user opts in
+                    try:
+                        rid = await store.save({
                             "kind": "review", "contact": contact, "goal": goal,
                             "messages": messages, "persona": None,
-                            "ranked": result.get("rows"),
-                            "best_score": result.get("finalEval"),
+                            "ranked": result.get("rows"), "best_score": result.get("finalEval"),
                             "num_candidates": 0, "num_rollouts": 0,
                             "duration_ms": int((time.monotonic() - t0) * 1000),
                             "candidate_model": engine.candidate_model,
                             "rollout_model": engine.rollout_model,
-                        }
-                    )
-                    await websocket.send_json({"type": "reviewSaved", "id": rid})
-                except Exception:
-                    pass
+                        })
+                        await websocket.send_json({"type": "reviewSaved", "id": rid})
+                    except Exception:
+                        pass
                 await websocket.send_json({"type": "done"})
                 continue
 
@@ -181,24 +291,19 @@ async def ws(websocket: WebSocket) -> None:
                 continue
 
             ranked = cap["ranked"]
-            try:
-                await store.save(
-                    {
-                        "contact": contact,
-                        "goal": goal,
-                        "messages": messages,
-                        "persona": cap["persona"],
-                        "ranked": ranked,
+            if opt_in_store:  # privacy: persist only when the user opts in
+                try:
+                    await store.save({
+                        "contact": contact, "goal": goal, "messages": messages,
+                        "persona": cap["persona"], "ranked": ranked,
                         "best_score": ranked[0]["score"] if ranked else None,
-                        "num_candidates": cap["candidates"],
-                        "num_rollouts": cap["rollouts"],
+                        "num_candidates": cap["candidates"], "num_rollouts": cap["rollouts"],
                         "duration_ms": int((time.monotonic() - t0) * 1000),
                         "candidate_model": engine.candidate_model,
                         "rollout_model": engine.rollout_model,
-                    }
-                )
-            except Exception:  # never let persistence break the live session
-                pass
+                    })
+                except Exception:  # never let persistence break the live session
+                    pass
     except WebSocketDisconnect:
         return
 

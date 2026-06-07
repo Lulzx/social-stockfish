@@ -13,12 +13,17 @@ interface Props {
   engine: EngineState;
   goal: string;
   messages: Message[];
+  pro: boolean;
+  saveHistory: boolean;
+  onToggleSaveHistory: (v: boolean) => void;
   onGoalChange: (g: string) => void;
   onPick: (r: RankedResult) => void;
   onAnalyze: () => void;
   onReview: () => void;
   onPaste: () => void;
   onActiveMove: (msgIndex: number | null) => void;
+  onShareLink: () => Promise<string | null>;
+  onUpgrade: () => void;
 }
 
 function Section({
@@ -47,12 +52,17 @@ export function EnginePane({
   engine,
   goal,
   messages,
+  pro,
+  saveHistory,
+  onToggleSaveHistory,
   onGoalChange,
   onPick,
   onAnalyze,
   onReview,
   onPaste,
   onActiveMove,
+  onShareLink,
+  onUpgrade,
 }: Props) {
   const busy = engine.phase === "candidates" || engine.phase === "simulating";
   const [selDot, setSelDot] = useState<Dot | null>(null);
@@ -160,11 +170,36 @@ export function EnginePane({
         >
           <PasteIcon /> Paste a conversation (WhatsApp / Telegram)
         </button>
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-default-400">
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={saveHistory}
+              onChange={(e) => onToggleSaveHistory(e.target.checked)}
+              className="h-3 w-3 accent-[#0a84ff]"
+            />
+            Save my history
+          </label>
+          <span className="flex items-center gap-1">
+            <LockIcon /> Private by default — nothing is stored unless you opt in or share.
+          </span>
+          {pro && (
+            <span className="ml-auto rounded-md bg-[#7cae3e]/15 px-1.5 py-0.5 text-[10px] font-bold text-[#4d7a1f]">
+              PRO
+            </span>
+          )}
+        </div>
       </Section>
 
       {showReview ? (
         <Section icon={<StarIcon />} title="Game Review">
-          <ReviewPanel rows={engine.review!} reviewId={engine.reviewId} onActive={onActiveMove} />
+          <ReviewPanel
+            rows={engine.review!}
+            pro={pro}
+            onActive={onActiveMove}
+            onShareLink={onShareLink}
+            onUpgrade={onUpgrade}
+          />
         </Section>
       ) : (
         <AnalysisView
@@ -297,3 +332,4 @@ const TreeIcon = () => (<svg {...ico}><circle cx="12" cy="5" r="2" /><circle cx=
 const PalmIcon = () => (<svg {...ico}><path d="M12 22V9M12 9c0-3-3-5-6-4M12 9c0-3 3-5 6-4M12 9c-2-2-5-2-7 0M12 9c2-2 5-2 7 0" /></svg>);
 const StarIcon = () => (<svg {...ico}><path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77 5.82 21l1.18-6.88-5-4.87 7.1-1.01L12 2z" /></svg>);
 const PasteIcon = () => (<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /></svg>);
+const LockIcon = () => (<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>);

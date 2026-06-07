@@ -63,7 +63,7 @@ export function PasteModal({
             minRows={8}
             maxRows={16}
             placeholder={
-              "Paste here, e.g.\n\n[7/6/26, 11:54:27 AM] Annie: how's your project going?\n[7/6/26, 11:55:01 AM] You: honestly kinda stuck rn\n\n…or Telegram / 'Name: message' formats."
+              "Paste here, e.g.\n\n[7/6/26, 11:54:27 AM] Priya: what did you want to cover today?\n[7/6/26, 11:55:01 AM] You: i'd love to talk about the senior role\n\n…or Telegram / 'Name: message' formats."
             }
             classNames={{ input: "text-[13px] font-mono" }}
           />

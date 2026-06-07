@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@heroui/react";
 import type { ReviewRow } from "../types";
 import { MoveBadge } from "./MoveBadge";
+import { makeShareCard, shareOrDownloadCard } from "../shareCard";
+import { deviceId } from "../lib";
 
 // chess.com-style classification order for the breakdown table
 const ORDER = [
@@ -22,12 +24,16 @@ function moveAccuracy(swing: number): number {
 
 export function ReviewPanel({
   rows,
-  reviewId,
+  pro,
   onActive,
+  onShareLink,
+  onUpgrade,
 }: {
   rows: ReviewRow[];
-  reviewId: number | null;
+  pro: boolean;
   onActive: (msgIndex: number | null) => void;
+  onShareLink: () => Promise<string | null>;
+  onUpgrade: () => void;
 }) {
   const myMoves = useMemo(() => rows.filter((r) => r.sender === "me" && r.classification), [rows]);
   const counts = useMemo(() => {
@@ -44,14 +50,17 @@ export function ReviewPanel({
   const cur = myMoves[step];
   const [showBest, setShowBest] = useState(false);
   const [shared, setShared] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const share = async () => {
-    const url = reviewId ? `${location.origin}/?review=${reviewId}` : location.href;
-    const blunders = counts["blunder"] || 0;
-    const text = `My Social Stockfish game review: ${accuracy.toFixed(1)} accuracy${
-      blunders ? `, ${blunders} blunder${blunders > 1 ? "s" : ""}` : ""
-    }.`;
+    setBusy(true);
     try {
+      const url = await onShareLink();
+      if (!url) return;
+      const blunders = counts["blunder"] || 0;
+      const text = `My Social Stockfish game review: ${accuracy.toFixed(1)} accuracy${
+        blunders ? `, ${blunders} blunder${blunders > 1 ? "s" : ""}` : ""
+      }.`;
       if (navigator.share) {
         await navigator.share({ title: "Social Stockfish Game Review", text, url });
       } else {
@@ -60,7 +69,18 @@ export function ReviewPanel({
         setTimeout(() => setShared(false), 2000);
       }
     } catch {
-      /* user cancelled share */
+      /* cancelled */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveCard = async () => {
+    setBusy(true);
+    try {
+      await shareOrDownloadCard(await makeShareCard(rows, accuracy));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -99,19 +119,33 @@ export function ReviewPanel({
             </div>
           ))}
         </div>
-        <Button
-          onPress={share}
-          size="sm"
-          radius="lg"
-          startContent={<ShareIcon />}
-          className="mt-3 w-full bg-default-900 font-semibold text-white"
-        >
-          {shared ? "Link copied!" : "Share review"}
-        </Button>
+        <div className="mt-3 flex gap-2">
+          <Button
+            onPress={saveCard}
+            isDisabled={busy}
+            size="sm"
+            radius="lg"
+            startContent={<ImageIcon />}
+            className="flex-1 bg-default-900 font-semibold text-white"
+          >
+            Save image
+          </Button>
+          <Button
+            onPress={share}
+            isDisabled={busy}
+            size="sm"
+            radius="lg"
+            startContent={<ShareIcon />}
+            variant="bordered"
+            className="flex-1 border-default-300 font-semibold text-default-700"
+          >
+            {shared ? "Link copied!" : "Share link"}
+          </Button>
+        </div>
       </div>
 
       {/* coach stepper */}
-      <Coach row={cur} showBest={showBest} onBest={() => setShowBest((v) => !v)} />
+      <Coach row={cur} pro={pro} onUpgrade={onUpgrade} showBest={showBest} onBest={() => setShowBest((v) => !v)} />
 
       <div className="flex items-center gap-2">
         <Button
@@ -141,10 +175,14 @@ export function ReviewPanel({
 
 function Coach({
   row,
+  pro,
+  onUpgrade,
   showBest,
   onBest,
 }: {
   row: ReviewRow;
+  pro: boolean;
+  onUpgrade: () => void;
   showBest: boolean;
   onBest: () => void;
 }) {
@@ -177,7 +215,7 @@ function Coach({
       const r = await fetch("/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: line }),
+        body: JSON.stringify({ text: line, device: deviceId() }),
       });
       if (!r.ok) throw new Error("tts");
       const a = new Audio(URL.createObjectURL(await r.blob()));
@@ -212,22 +250,17 @@ function Coach({
             {row.eval.toFixed(2)}
           </span>
           <button
-            onClick={() => (speaking ? stop() : speak())}
-            title={speaking ? "Stop" : "Hear the coach"}
+            onClick={() => (pro ? (speaking ? stop() : speak()) : onUpgrade())}
+            title={pro ? (speaking ? "Stop" : "Hear the coach") : "Pro: hear the coach"}
             className={`flex h-6 w-6 items-center justify-center rounded-md text-default-500 hover:bg-default-100 ${
               speaking ? "animate-pulse text-[#0a84ff]" : ""
             }`}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
               <path d="M3 9v6h4l5 5V4L7 9H3z" />
-              <path
-                d="M16 8a4 4 0 0 1 0 8"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
+              <path d="M16 8a4 4 0 0 1 0 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
+            {!pro && <span className="absolute -mt-3 ml-3 text-[9px]">🔒</span>}
           </button>
         </div>
         <p className="mb-1 text-[13.5px] leading-snug text-default-800">
@@ -267,6 +300,13 @@ const ShareIcon = () => (
     strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
     <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+  </svg>
+);
+const ImageIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" />
+    <path d="M21 15l-5-5L5 21" />
   </svg>
 );
 
