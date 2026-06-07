@@ -7,7 +7,7 @@
 
 Inspired by [@cadenbuild's Social Stockfish](https://x.com/cadenbuild/status/1889909377886462320).
 
-![screenshot](docs/screenshot.png)
+![Analysis — the strongest next message, with live tree search and Monte Carlo evaluation](docs/analyze.png)
 
 ## How it works
 
@@ -46,6 +46,8 @@ eval graph, an accuracy score, a move-count breakdown, and a **coach ("James")**
 who steps through your moves with a spoken explanation (Supertonic TTS) and a
 suggested better move. The same calibrated **position eval** drives the
 Stockfish-style eval bar, so a losing conversation actually reads as losing.
+
+![Game Review — accuracy, move classification, and a coach who walks your moves](docs/screenshot.png)
 
 ## Stack
 
