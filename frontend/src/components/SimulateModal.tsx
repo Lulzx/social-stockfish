@@ -9,11 +9,13 @@ interface Sim {
 
 export function SimulateModal({
   candidate,
+  score,
   goal,
   messages,
   onClose,
 }: {
   candidate: Candidate | null;
+  score: number | null;
   goal: string;
   messages: Message[];
   onClose: () => void;
@@ -32,6 +34,7 @@ export function SimulateModal({
       body: JSON.stringify({
         goal,
         move: candidate.text,
+        score,
         messages: messages.map((m) => ({ sender: m.sender, text: m.text })),
       }),
       signal: ctrl.signal,
@@ -41,7 +44,7 @@ export function SimulateModal({
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => ctrl.abort();
-  }, [candidate, goal, messages]);
+  }, [candidate, score, goal, messages]);
 
   return (
     <Modal isOpen={!!candidate} onClose={onClose} size="md" scrollBehavior="inside">
@@ -82,8 +85,16 @@ export function SimulateModal({
                 })}
               </div>
               <div className="mt-3 flex items-center justify-center gap-2 text-[12px] text-default-500">
-                <span>outcome score</span>
-                <span className="rounded-md bg-default-900 px-1.5 py-0.5 font-bold tabular-nums text-white">
+                <span>
+                  this path {sim.score >= 0.6 ? "landed" : sim.score < 0.35 ? "fizzled" : "was mixed"} ·
+                  outcome
+                </span>
+                <span
+                  className="rounded-md px-1.5 py-0.5 font-bold tabular-nums text-white"
+                  style={{
+                    background: sim.score >= 0.7 ? "#34c759" : sim.score >= 0.45 ? "#d9a400" : sim.score >= 0.25 ? "#ff9f0a" : "#ff3b30",
+                  }}
+                >
                   {sim.score.toFixed(2)}
                 </span>
               </div>

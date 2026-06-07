@@ -49,7 +49,7 @@ export function StateGrid({
 }: {
   dots: Dot[];
   candidates: Candidate[];
-  onSelect: (cid: number) => void;
+  onSelect: (dot: Dot) => void;
   max?: number;
 }) {
   const target = Math.min(dots.length, max);
@@ -59,7 +59,7 @@ export function StateGrid({
       {dots.slice(0, revealed).map((d, i) => (
         <button
           key={i}
-          onClick={() => onSelect(d.candidateId)}
+          onClick={() => onSelect(d)}
           title={labelFor(candidates, d.candidateId)}
           className="dot-pop h-[7px] w-[7px] rounded-full transition-transform hover:scale-150"
           style={{ background: "#0a84ff", animationDelay: `${(i % 12) * 4}ms` }}
@@ -77,7 +77,7 @@ export function MonteCarloGrid({
 }: {
   dots: Dot[];
   candidates: Candidate[];
-  onSelect: (cid: number) => void;
+  onSelect: (dot: Dot) => void;
   max?: number;
 }) {
   const target = Math.min(dots.length, max);
@@ -87,7 +87,7 @@ export function MonteCarloGrid({
       {dots.slice(0, revealed).map((d, i) => (
         <button
           key={i}
-          onClick={() => onSelect(d.candidateId)}
+          onClick={() => onSelect(d)}
           title={`${labelFor(candidates, d.candidateId)} · ${(d.score ?? 0).toFixed(2)}`}
           className="dot-pop h-[8px] w-[8px] rounded-full transition-transform hover:scale-150"
           style={{ background: scoreColor(d.score ?? 0), animationDelay: `${(i % 12) * 4}ms` }}

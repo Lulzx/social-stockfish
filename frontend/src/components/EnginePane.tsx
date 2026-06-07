@@ -55,19 +55,20 @@ export function EnginePane({
   onActiveMove,
 }: Props) {
   const busy = engine.phase === "candidates" || engine.phase === "simulating";
-  const [selCid, setSelCid] = useState<number | null>(null);
+  const [selDot, setSelDot] = useState<Dot | null>(null);
 
   // Monte Carlo dots = one per rollout; state-exploration dots = several per
-  // rollout. Both carry the candidate id so they're hover/click-explorable.
+  // rollout. Both carry the candidate id AND that rollout's score, so each dot
+  // simulates its own outcome (a failed dot fizzles, a winning dot lands).
   const mcDots: Dot[] = engine.rollouts.map((r) => ({ candidateId: r.candidateId, score: r.score }));
   const stateDots: Dot[] = useMemo(
     () =>
       engine.rollouts.flatMap((r) =>
-        Array.from({ length: STATE_PER_ROLLOUT }, () => ({ candidateId: r.candidateId }))
+        Array.from({ length: STATE_PER_ROLLOUT }, () => ({ candidateId: r.candidateId, score: r.score }))
       ),
     [engine.rollouts]
   );
-  const selected = engine.candidates.find((c) => c.id === selCid) ?? null;
+  const selected = selDot ? engine.candidates.find((c) => c.id === selDot.candidateId) ?? null : null;
   const reviewing = engine.mode === "review";
   const showReview = reviewing && engine.review && engine.review.length > 0;
   // Collapse the big header once the position has been evaluated at least once.
@@ -172,11 +173,17 @@ export function EnginePane({
           mcDots={mcDots}
           stateDots={stateDots}
           onPick={onPick}
-          onSelect={setSelCid}
+          onSelect={setSelDot}
         />
       )}
 
-      <SimulateModal candidate={selected} goal={goal} messages={messages} onClose={() => setSelCid(null)} />
+      <SimulateModal
+        candidate={selected}
+        score={selDot?.score ?? null}
+        goal={goal}
+        messages={messages}
+        onClose={() => setSelDot(null)}
+      />
     </div>
   );
 }
@@ -194,7 +201,7 @@ function AnalysisView({
   mcDots: Dot[];
   stateDots: Dot[];
   onPick: (r: RankedResult) => void;
-  onSelect: (cid: number) => void;
+  onSelect: (dot: Dot) => void;
 }) {
   const candidates: Candidate[] = engine.candidates;
   return (

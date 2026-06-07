@@ -296,16 +296,36 @@ class Engine:
 
     # ---- SIMULATE: one detailed rollout trajectory (lazy, on dot click) ------
     async def simulate(
-        self, messages: list[dict[str, str]], goal: str, move: str
+        self, messages: list[dict[str, str]], goal: str, move: str,
+        score: float | None = None,
     ) -> dict:
         transcript = _format_transcript(messages)
+        # Each dot is a specific Monte Carlo rollout with its OWN score, so the
+        # simulated conversation must match that outcome — a low-scoring dot should
+        # fizzle, a high-scoring one should land. Otherwise every dot looks the same.
+        if score is None:
+            guidance = "Sample any plausible outcome."
+        elif score >= 0.6:
+            guidance = (
+                f"This rollout scored {score:.2f} (good): the outcome should clearly "
+                "advance the goal — they warm up and engage."
+            )
+        elif score < 0.35:
+            guidance = (
+                f"This rollout scored {score:.2f} (poor): the outcome should go badly "
+                "— they get lukewarm, deflect, lose interest, or disengage."
+            )
+        else:
+            guidance = (
+                f"This rollout scored {score:.2f} (mixed): the outcome should be "
+                "ambivalent — polite but noncommittal, no clear progress."
+            )
         prompt = (
             f"GOAL: {goal}\n\n"
             f"CONVERSATION SO FAR (most recent last):\n{transcript}\n\n"
             f'MY NEXT MESSAGE: "{move}"\n\n'
-            "Simulate ONE realistic way this plays out over the next few exchanges "
-            "(THEM replies, ME follows up, THEM replies, ME, THEM), sampling a "
-            "plausible outcome. Then score 0.0-1.0 how much closer ME got to the GOAL.\n"
+            f"Simulate ONE realistic way this plays out over the next few exchanges "
+            "(THEM replies, ME follows up, THEM replies, ME, THEM). " + guidance + "\n"
             "Output ONLY JSON:\n"
             '{"trajectory": [{"sender": "me", "text": "<my message>"}, '
             '{"sender": "them", "text": "..."}, ...], "score": <0-1>}\n'
@@ -318,7 +338,7 @@ class Engine:
             ],
             model=self.candidate_model,
             reasoning=self.candidate_reasoning,
-            temperature=0.95,
+            temperature=1.0,
             max_tokens=900,
         )
         traj = data.get("trajectory") if isinstance(data, dict) else None
@@ -328,7 +348,11 @@ class Engine:
             text = clean_reply(str(t.get("text", "")).strip())
             if text:
                 out.append({"sender": sender, "text": text})
-        return {"trajectory": out, "score": _clamp01(data.get("score", 0.0)) if isinstance(data, dict) else 0.0}
+        # show the clicked dot's own score so it matches the dot's colour
+        final = score if score is not None else (
+            _clamp01(data.get("score", 0.0)) if isinstance(data, dict) else 0.0
+        )
+        return {"trajectory": out, "score": round(final, 2)}
 
     # ---- REVIEW: move-by-move game review ------------------------------------
     async def review(

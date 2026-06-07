@@ -63,7 +63,11 @@ async def simulate(req: Request) -> dict:
     if not move or not goal:
         raise HTTPException(status_code=400, detail="move and goal required")
     engine: Engine = app.state.engine
-    return await engine.simulate(body.get("messages", []), goal, move)
+    score = body.get("score")
+    return await engine.simulate(
+        body.get("messages", []), goal, move,
+        score=float(score) if score is not None else None,
+    )
 
 
 @app.get("/review/{review_id}")
