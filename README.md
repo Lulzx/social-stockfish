@@ -5,7 +5,7 @@
 > conversation tree, and running Monte Carlo rollouts scored by an LLM value
 > function — to tell you the highest-expected-value thing to say next.
 
-Live: **https://chat.lulzx.space**
+Inspired by [@cadenbuild's Social Stockfish](https://x.com/cadenbuild/status/1889909377886462320).
 
 ![screenshot](docs/screenshot.png)
 
@@ -82,9 +82,8 @@ MiniMax example.
 ## Deployment
 
 The built SPA is copied to `backend/static/` and served by FastAPI alongside
-`/ws`. On the VPS it runs as the `social-stockfish` systemd unit on
-`127.0.0.1:8201`, reverse-proxied by Caddy (`chat.lulzx.space`, automatic HTTPS).
-DNS is a DNS-only A record on Cloudflare → the VPS.
+`/ws`. On a VPS it runs as a systemd unit on `127.0.0.1:8201`, reverse-proxied by
+Caddy (your domain, automatic HTTPS), with an A record pointing at the VPS.
 
 ## License
 
