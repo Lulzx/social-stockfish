@@ -1,0 +1,26 @@
+{
+  "name": "social-stockfish-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_OPTIONS=--no-deprecation vite",
+    "build": "tsc -b && NODE_OPTIONS=--no-deprecation vite build",
+    "preview": "NODE_OPTIONS=--no-deprecation vite preview"
+  },
+  "dependencies": {
+    "@heroui/react": "^2.8.5",
+    "framer-motion": "^12.23.12",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.2"
+  }
+}

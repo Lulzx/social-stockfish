@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+.venv/
+venv/
+
+# build output
+dist/
+backend/static/
+*.tsbuildinfo
+
+# python
+__pycache__/
+*.pyc
+
+# secrets / env
+.env
+backend/.env
+*.local
+
+# os
+.DS_Store
