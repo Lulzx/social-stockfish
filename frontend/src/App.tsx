@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChatPane } from "./components/ChatPane";
 import { EnginePane } from "./components/EnginePane";
 import { EvalBar } from "./components/EvalBar";
@@ -30,13 +30,37 @@ export default function App() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [activeMove, setActiveMove] = useState<number | null>(null);
   const [tab, setTab] = useState<"chat" | "engine">("chat");
-  const { state: engine, analyze, review } = useEngine();
+  const { state: engine, analyze, review, loadReview, reset } = useEngine();
+
+  // If opened with ?review=<id>, load that shared game review.
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("review");
+    if (!id) return;
+    fetch(`/review/${id}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        setMessages(d.messages.map((m: { sender: Sender; text: string }) => seed(m.sender, m.text)));
+        setContact(d.contact || "Them");
+        setGoal(d.goal || "");
+        loadReview(d.rows, d.finalEval, d.id);
+        setTab("engine");
+      })
+      .catch(() => {});
+  }, [loadReview]);
 
   // Analysis runs only on demand (Analyze / Game Review buttons), never automatically.
   const send = (text: string, sender: Sender) =>
     setMessages((m) => [...m, seed(sender, text)]);
   // Picking a suggested move adds it as *your* sent message.
   const pick = (r: RankedResult) => setMessages((m) => [...m, seed("me", r.text)]);
+
+  const newChat = () => {
+    setMessages([]);
+    setActiveMove(null);
+    reset();
+    setTab("chat");
+    if (location.search) window.history.replaceState({}, "", location.pathname);
+  };
 
   const loadPasted = (msgs: Message[], them: string) => {
     setMessages(msgs);
@@ -101,6 +125,7 @@ export default function App() {
           activeIndex={reviewing ? activeMove : null}
           onContactChange={setContact}
           onSend={send}
+          onNewChat={newChat}
         />
       </div>
 
@@ -109,6 +134,7 @@ export default function App() {
         <EnginePane
           engine={engine}
           goal={goal}
+          messages={messages}
           onGoalChange={setGoal}
           onPick={pick}
           onAnalyze={runAnalyze}

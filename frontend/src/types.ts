@@ -56,5 +56,6 @@ export type ServerEvent =
   | { type: "rollout"; candidateId: number; score: number; states: number }
   | { type: "results"; ranked: RankedResult[]; final?: boolean; positionEval: number }
   | { type: "review"; rows: ReviewRow[]; finalEval: number; goal: string }
+  | { type: "reviewSaved"; id: number }
   | { type: "done" }
   | { type: "error"; text: string };

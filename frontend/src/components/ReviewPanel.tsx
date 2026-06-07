@@ -22,9 +22,11 @@ function moveAccuracy(swing: number): number {
 
 export function ReviewPanel({
   rows,
+  reviewId,
   onActive,
 }: {
   rows: ReviewRow[];
+  reviewId: number | null;
   onActive: (msgIndex: number | null) => void;
 }) {
   const myMoves = useMemo(() => rows.filter((r) => r.sender === "me" && r.classification), [rows]);
@@ -41,6 +43,26 @@ export function ReviewPanel({
   const [step, setStep] = useState(0);
   const cur = myMoves[step];
   const [showBest, setShowBest] = useState(false);
+  const [shared, setShared] = useState(false);
+
+  const share = async () => {
+    const url = reviewId ? `${location.origin}/?review=${reviewId}` : location.href;
+    const blunders = counts["blunder"] || 0;
+    const text = `My Social Stockfish game review: ${accuracy.toFixed(1)} accuracy${
+      blunders ? `, ${blunders} blunder${blunders > 1 ? "s" : ""}` : ""
+    }.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Social Stockfish Game Review", text, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        setTimeout(() => setShared(false), 2000);
+      }
+    } catch {
+      /* user cancelled share */
+    }
+  };
 
   useEffect(() => setShowBest(false), [step]);
   useEffect(() => {
@@ -77,6 +99,15 @@ export function ReviewPanel({
             </div>
           ))}
         </div>
+        <Button
+          onPress={share}
+          size="sm"
+          radius="lg"
+          startContent={<ShareIcon />}
+          className="mt-3 w-full bg-default-900 font-semibold text-white"
+        >
+          {shared ? "Link copied!" : "Share review"}
+        </Button>
       </div>
 
       {/* coach stepper */}
@@ -121,7 +152,25 @@ function Coach({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [speaking, setSpeaking] = useState(false);
 
+  const stop = () => {
+    const a = audioRef.current;
+    if (a) {
+      a.pause();
+      a.src = "";
+      audioRef.current = null;
+    }
+    setSpeaking(false);
+  };
+
+  // Stop any playing audio when the move changes or the coach unmounts, so two
+  // clips never overlap when you play one then step to the next move.
+  useEffect(() => {
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.i]);
+
   const speak = async () => {
+    stop(); // never let a previous clip keep playing
     const line = `Your message "${row.text}" is ${article(c.label)} ${c.label}. ${row.note || ""}`;
     try {
       setSpeaking(true);
@@ -131,8 +180,7 @@ function Coach({
         body: JSON.stringify({ text: line }),
       });
       if (!r.ok) throw new Error("tts");
-      const url = URL.createObjectURL(await r.blob());
-      const a = new Audio(url);
+      const a = new Audio(URL.createObjectURL(await r.blob()));
       audioRef.current = a;
       a.onended = () => setSpeaking(false);
       await a.play();
@@ -164,8 +212,8 @@ function Coach({
             {row.eval.toFixed(2)}
           </span>
           <button
-            onClick={speak}
-            title="Hear the coach"
+            onClick={() => (speaking ? stop() : speak())}
+            title={speaking ? "Stop" : "Hear the coach"}
             className={`flex h-6 w-6 items-center justify-center rounded-md text-default-500 hover:bg-default-100 ${
               speaking ? "animate-pulse text-[#0a84ff]" : ""
             }`}
@@ -213,6 +261,14 @@ function Coach({
 function article(label: string): string {
   return /^[aeiou]/i.test(label) ? "an" : "a";
 }
+
+const ShareIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+    <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+  </svg>
+);
 
 function EvalGraph({ rows, activeIndex }: { rows: ReviewRow[]; activeIndex?: number }) {
   const W = 100;

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 import httpx  # noqa: E402
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
@@ -52,6 +52,35 @@ async def health() -> dict:
 async def history(limit: int = 20) -> dict:
     store: Store = app.state.store
     return {"count": await store.count(), "items": await store.recent(limit)}
+
+
+@app.post("/simulate")
+async def simulate(req: Request) -> dict:
+    """Lazily simulate one detailed rollout for a clicked exploration/MC dot."""
+    body = await req.json()
+    move = (body.get("move") or "").strip()
+    goal = (body.get("goal") or "").strip()
+    if not move or not goal:
+        raise HTTPException(status_code=400, detail="move and goal required")
+    engine: Engine = app.state.engine
+    return await engine.simulate(body.get("messages", []), goal, move)
+
+
+@app.get("/review/{review_id}")
+async def get_review(review_id: int) -> dict:
+    """Fetch a stored game review so it can be shared via a link."""
+    store: Store = app.state.store
+    row = await store.get(review_id)
+    if not row or row.get("kind") != "review":
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {
+        "id": row["id"],
+        "goal": row["goal"],
+        "contact": row["contact"],
+        "messages": row["messages"],
+        "rows": row["ranked"],
+        "finalEval": row["best_score"],
+    }
 
 
 # --- Coach voice: proxy to the Supertonic TTS server -------------------------
@@ -107,7 +136,7 @@ async def ws(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "error", "text": f"Engine error: {e}"})
                     continue
                 try:
-                    await store.save(
+                    rid = await store.save(
                         {
                             "kind": "review", "contact": contact, "goal": goal,
                             "messages": messages, "persona": None,
@@ -119,8 +148,10 @@ async def ws(websocket: WebSocket) -> None:
                             "rollout_model": engine.rollout_model,
                         }
                     )
+                    await websocket.send_json({"type": "reviewSaved", "id": rid})
                 except Exception:
                     pass
+                await websocket.send_json({"type": "done"})
                 continue
 
             # Capture the outcome as events stream past, to persist after the run.

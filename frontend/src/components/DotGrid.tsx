@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { Candidate } from "../types";
 
 /** Smoothly climbs a revealed counter toward `target` for a live "filling" feel. */
 function useProgressive(target: number, perTick = 3, intervalMs = 16) {
@@ -12,15 +13,11 @@ function useProgressive(target: number, perTick = 3, intervalMs = 16) {
       return;
     }
     const id = setInterval(() => {
-      setRevealed((r) => {
-        if (r >= targetRef.current) return r;
-        return Math.min(targetRef.current, r + perTick);
-      });
+      setRevealed((r) => (r >= targetRef.current ? r : Math.min(targetRef.current, r + perTick)));
     }, intervalMs);
     return () => clearInterval(id);
   }, [target, perTick, intervalMs]);
 
-  // snap down instantly on reset
   useEffect(() => {
     if (target < revealed) setRevealed(target);
   }, [target, revealed]);
@@ -29,21 +26,42 @@ function useProgressive(target: number, perTick = 3, intervalMs = 16) {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 0.7) return "#34c759"; // green — goal achieved
-  if (score >= 0.45) return "#ffd60a"; // gold — promising
-  if (score >= 0.25) return "#ff9f0a"; // orange — shaky
-  return "#ff3b30"; // red — failed rollout
+  if (score >= 0.7) return "#34c759";
+  if (score >= 0.45) return "#ffd60a";
+  if (score >= 0.25) return "#ff9f0a";
+  return "#ff3b30";
 }
 
-export function StateGrid({ count, max = 320 }: { count: number; max?: number }) {
-  const target = Math.min(count, max);
+function labelFor(candidates: Candidate[], cid: number): string {
+  return candidates.find((c) => c.id === cid)?.text ?? `move ${cid}`;
+}
+
+export interface Dot {
+  candidateId: number;
+  score?: number;
+}
+
+export function StateGrid({
+  dots,
+  candidates,
+  onSelect,
+  max = 400,
+}: {
+  dots: Dot[];
+  candidates: Candidate[];
+  onSelect: (cid: number) => void;
+  max?: number;
+}) {
+  const target = Math.min(dots.length, max);
   const revealed = useProgressive(target, 4);
   return (
     <div className="flex flex-wrap gap-[5px]">
-      {Array.from({ length: revealed }).map((_, i) => (
-        <span
+      {dots.slice(0, revealed).map((d, i) => (
+        <button
           key={i}
-          className="dot-pop h-[7px] w-[7px] rounded-full"
+          onClick={() => onSelect(d.candidateId)}
+          title={labelFor(candidates, d.candidateId)}
+          className="dot-pop h-[7px] w-[7px] rounded-full transition-transform hover:scale-150"
           style={{ background: "#0a84ff", animationDelay: `${(i % 12) * 4}ms` }}
         />
       ))}
@@ -52,22 +70,27 @@ export function StateGrid({ count, max = 320 }: { count: number; max?: number })
 }
 
 export function MonteCarloGrid({
-  scores,
+  dots,
+  candidates,
+  onSelect,
   max = 240,
 }: {
-  scores: number[];
+  dots: Dot[];
+  candidates: Candidate[];
+  onSelect: (cid: number) => void;
   max?: number;
 }) {
-  const target = Math.min(scores.length, max);
+  const target = Math.min(dots.length, max);
   const revealed = useProgressive(target, 3);
   return (
     <div className="flex flex-wrap gap-[5px]">
-      {scores.slice(0, revealed).map((sc, i) => (
-        <span
+      {dots.slice(0, revealed).map((d, i) => (
+        <button
           key={i}
-          className="dot-pop h-[8px] w-[8px] rounded-full"
-          style={{ background: scoreColor(sc), animationDelay: `${(i % 12) * 4}ms` }}
-          title={sc.toFixed(2)}
+          onClick={() => onSelect(d.candidateId)}
+          title={`${labelFor(candidates, d.candidateId)} · ${(d.score ?? 0).toFixed(2)}`}
+          className="dot-pop h-[8px] w-[8px] rounded-full transition-transform hover:scale-150"
+          style={{ background: scoreColor(d.score ?? 0), animationDelay: `${(i % 12) * 4}ms` }}
         />
       ))}
     </div>

@@ -1,13 +1,18 @@
+import { useMemo, useState } from "react";
 import { Avatar, Button, Chip, Input, Spinner } from "@heroui/react";
 import type { EngineState } from "../useEngine";
-import type { RankedResult } from "../types";
-import { MonteCarloGrid, StateGrid } from "./DotGrid";
+import type { Candidate, Message, RankedResult } from "../types";
+import { type Dot, MonteCarloGrid, StateGrid } from "./DotGrid";
 import { MoveBadge } from "./MoveBadge";
 import { ReviewPanel } from "./ReviewPanel";
+import { SimulateModal } from "./SimulateModal";
+
+const STATE_PER_ROLLOUT = 5; // matches ROLLOUT_DEPTH on the backend
 
 interface Props {
   engine: EngineState;
   goal: string;
+  messages: Message[];
   onGoalChange: (g: string) => void;
   onPick: (r: RankedResult) => void;
   onAnalyze: () => void;
@@ -41,6 +46,7 @@ const card = "rounded-2xl bg-white p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] rin
 export function EnginePane({
   engine,
   goal,
+  messages,
   onGoalChange,
   onPick,
   onAnalyze,
@@ -49,32 +55,61 @@ export function EnginePane({
   onActiveMove,
 }: Props) {
   const busy = engine.phase === "candidates" || engine.phase === "simulating";
-  const scores = engine.rollouts.map((r) => r.score);
+  const [selCid, setSelCid] = useState<number | null>(null);
+
+  // Monte Carlo dots = one per rollout; state-exploration dots = several per
+  // rollout. Both carry the candidate id so they're hover/click-explorable.
+  const mcDots: Dot[] = engine.rollouts.map((r) => ({ candidateId: r.candidateId, score: r.score }));
+  const stateDots: Dot[] = useMemo(
+    () =>
+      engine.rollouts.flatMap((r) =>
+        Array.from({ length: STATE_PER_ROLLOUT }, () => ({ candidateId: r.candidateId }))
+      ),
+    [engine.rollouts]
+  );
+  const selected = engine.candidates.find((c) => c.id === selCid) ?? null;
   const reviewing = engine.mode === "review";
   const showReview = reviewing && engine.review && engine.review.length > 0;
+  // Collapse the big header once the position has been evaluated at least once.
+  const evaluated =
+    engine.positionEval !== null || engine.ranked.length > 0 || showReview;
 
   return (
     <div className="flex h-full w-full flex-col overflow-y-auto bg-[#f5f5f7] px-4 py-4 sm:px-5">
-      {/* header */}
-      <div className="relative mb-5 flex flex-col items-center pt-2">
-        <span
-          className={`absolute right-0 top-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${
-            engine.connected
-              ? "bg-success-100 text-success-700"
-              : "bg-default-200 text-default-500"
-          }`}
-        >
-          {engine.connected ? "Connected" : "Offline"}
-        </span>
-        <Avatar
-          src="/stockfish.webp"
-          radius="lg"
-          className="mb-2 h-14 w-14 bg-white ring-1 ring-default-200"
-          imgProps={{ className: "object-contain p-1" }}
-        />
-        <h1 className="text-[19px] font-bold tracking-tight text-default-900">Social Stockfish</h1>
-        <span className="text-[12px] text-default-400">v0.1</span>
-      </div>
+      {/* header — collapses to a slim bar once a position has been evaluated */}
+      {evaluated ? (
+        <div className="mb-3 flex items-center gap-2">
+          <Avatar
+            src="/stockfish.webp"
+            radius="sm"
+            className="h-6 w-6 bg-white ring-1 ring-default-200"
+            imgProps={{ className: "object-contain p-0.5" }}
+          />
+          <span className="text-[14px] font-bold text-default-900">Social Stockfish</span>
+          <span
+            className={`ml-auto h-2 w-2 rounded-full ${engine.connected ? "bg-success-500" : "bg-default-300"}`}
+            title={engine.connected ? "Connected" : "Offline"}
+          />
+        </div>
+      ) : (
+        <div className="relative mb-5 flex flex-col items-center pt-2">
+          <span
+            className={`absolute right-0 top-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+              engine.connected ? "bg-success-100 text-success-700" : "bg-default-200 text-default-500"
+            }`}
+          >
+            {engine.connected ? "Connected" : "Offline"}
+          </span>
+          <Avatar
+            src="/stockfish.webp"
+            radius="lg"
+            className="mb-2 h-14 w-14 bg-white ring-1 ring-default-200"
+            imgProps={{ className: "object-contain p-1" }}
+          />
+          <h1 className="text-[19px] font-bold tracking-tight text-default-900">Social Stockfish</h1>
+          <span className="text-[12px] text-default-400">v0.1</span>
+        </div>
+      )}
 
       {/* conversation goal */}
       <Section icon={<GoalIcon />} title="Conversation Goal">
@@ -128,16 +163,20 @@ export function EnginePane({
 
       {showReview ? (
         <Section icon={<StarIcon />} title="Game Review">
-          <ReviewPanel rows={engine.review!} onActive={onActiveMove} />
+          <ReviewPanel rows={engine.review!} reviewId={engine.reviewId} onActive={onActiveMove} />
         </Section>
       ) : (
         <AnalysisView
           engine={engine}
           busy={busy}
-          scores={scores}
+          mcDots={mcDots}
+          stateDots={stateDots}
           onPick={onPick}
+          onSelect={setSelCid}
         />
       )}
+
+      <SimulateModal candidate={selected} goal={goal} messages={messages} onClose={() => setSelCid(null)} />
     </div>
   );
 }
@@ -145,14 +184,19 @@ export function EnginePane({
 function AnalysisView({
   engine,
   busy,
-  scores,
+  mcDots,
+  stateDots,
   onPick,
+  onSelect,
 }: {
   engine: EngineState;
   busy: boolean;
-  scores: number[];
+  mcDots: Dot[];
+  stateDots: Dot[];
   onPick: (r: RankedResult) => void;
+  onSelect: (cid: number) => void;
 }) {
+  const candidates: Candidate[] = engine.candidates;
   return (
     <>
       {/* analysis results */}
@@ -192,12 +236,15 @@ function AnalysisView({
       {/* conversation state exploration */}
       <Section icon={<TreeIcon />} title="Conversational State Exploration">
         <div className={card}>
-          {engine.stateNodes === 0 ? (
+          {stateDots.length === 0 ? (
             <div className="py-3 text-center text-[12px] text-default-300">
               {busy ? "Exploring conversation tree..." : "—"}
             </div>
           ) : (
-            <StateGrid count={engine.stateNodes} />
+            <>
+              <StateGrid dots={stateDots} candidates={candidates} onSelect={onSelect} />
+              <p className="mt-2 text-[10px] text-default-400">hover a node, or click to see a sample chat</p>
+            </>
           )}
         </div>
       </Section>
@@ -205,18 +252,18 @@ function AnalysisView({
       {/* monte carlo evaluation */}
       <Section icon={<PalmIcon />} title="Monte Carlo Evaluation">
         <div className={card}>
-          {scores.length === 0 ? (
+          {mcDots.length === 0 ? (
             <div className="py-3 text-center text-[12px] text-default-300">
               {busy ? "Running Monte Carlo simulations..." : "—"}
             </div>
           ) : (
             <>
-              <MonteCarloGrid scores={scores} />
+              <MonteCarloGrid dots={mcDots} candidates={candidates} onSelect={onSelect} />
               <div className="mt-2.5 flex items-center gap-3 text-[10px] text-default-400">
                 <Legend color="#34c759" label="goal reached" />
                 <Legend color="#ffd60a" label="promising" />
                 <Legend color="#ff3b30" label="failed" />
-                <span className="ml-auto tabular-nums">{scores.length} sims</span>
+                <span className="ml-auto tabular-nums">{mcDots.length} sims</span>
               </div>
             </>
           )}

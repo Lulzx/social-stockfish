@@ -54,8 +54,9 @@ export function parseConversation(raw: string): ParsedConversation {
     if (isSystem(line)) continue;
     let m = line.match(WA);
     if (m) {
+      // groups: 1 = date, 2 = sender name, 3 = message text
       push();
-      cur = { sender: m[1].trim(), text: m[2] ?? "", ts: undefined };
+      cur = { sender: m[2].trim(), text: m[3] ?? "", ts: m[1] };
       continue;
     }
     m = line.match(TG);

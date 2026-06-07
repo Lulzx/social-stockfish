@@ -294,6 +294,42 @@ class Engine:
         await emit_ranking(final=True)
         await emit({"type": "done"})
 
+    # ---- SIMULATE: one detailed rollout trajectory (lazy, on dot click) ------
+    async def simulate(
+        self, messages: list[dict[str, str]], goal: str, move: str
+    ) -> dict:
+        transcript = _format_transcript(messages)
+        prompt = (
+            f"GOAL: {goal}\n\n"
+            f"CONVERSATION SO FAR (most recent last):\n{transcript}\n\n"
+            f'MY NEXT MESSAGE: "{move}"\n\n'
+            "Simulate ONE realistic way this plays out over the next few exchanges "
+            "(THEM replies, ME follows up, THEM replies, ME, THEM), sampling a "
+            "plausible outcome. Then score 0.0-1.0 how much closer ME got to the GOAL.\n"
+            "Output ONLY JSON:\n"
+            '{"trajectory": [{"sender": "me", "text": "<my message>"}, '
+            '{"sender": "them", "text": "..."}, ...], "score": <0-1>}\n'
+            "Start the trajectory with MY NEXT MESSAGE as the first item. No em dashes."
+        )
+        data = await self.client.chat_json(
+            [
+                {"role": "system", "content": ROLLOUT_SYS},
+                {"role": "user", "content": prompt},
+            ],
+            model=self.candidate_model,
+            reasoning=self.candidate_reasoning,
+            temperature=0.95,
+            max_tokens=900,
+        )
+        traj = data.get("trajectory") if isinstance(data, dict) else None
+        out = []
+        for t in traj or []:
+            sender = "me" if str(t.get("sender", "")).lower().startswith("m") else "them"
+            text = clean_reply(str(t.get("text", "")).strip())
+            if text:
+                out.append({"sender": sender, "text": text})
+        return {"trajectory": out, "score": _clamp01(data.get("score", 0.0)) if isinstance(data, dict) else 0.0}
+
     # ---- REVIEW: move-by-move game review ------------------------------------
     async def review(
         self, messages: list[dict[str, str]], goal: str, emit: EventSink
@@ -361,7 +397,6 @@ class Engine:
             "goal": goal,
         }
         await emit(result)
-        await emit({"type": "done"})
         return result
 
 

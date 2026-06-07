@@ -25,6 +25,7 @@ export interface EngineState {
   stateNodes: number;
   review: ReviewRow[] | null;
   finalEval: number | null;
+  reviewId: number | null;
   error: string | null;
 }
 
@@ -42,6 +43,7 @@ const initial: EngineState = {
   stateNodes: 0,
   review: null,
   finalEval: null,
+  reviewId: null,
   error: null,
 };
 
@@ -116,6 +118,7 @@ export function useEngine() {
       status: "Reviewing the game...",
       review: null,
       finalEval: null,
+      reviewId: null,
       error: null,
     }));
     send({
@@ -126,7 +129,32 @@ export function useEngine() {
     });
   }, []);
 
-  return { state, analyze, review };
+  // Load a previously stored review (e.g. opened from a shared link).
+  const loadReview = useCallback(
+    (rows: ReviewRow[], finalEval: number, id: number) => {
+      setState((s) => ({
+        ...s,
+        mode: "review",
+        phase: "done",
+        status: "",
+        review: rows,
+        finalEval,
+        reviewId: id,
+        error: null,
+      }));
+    },
+    []
+  );
+
+  // Reset to a blank engine state (used by "New chat").
+  const reset = useCallback(() => {
+    setState((s) => ({
+      ...initial,
+      connected: s.connected,
+    }));
+  }, []);
+
+  return { state, analyze, review, loadReview, reset };
 }
 
 function reduce(s: EngineState, ev: ServerEvent): EngineState {
@@ -154,6 +182,8 @@ function reduce(s: EngineState, ev: ServerEvent): EngineState {
       return { ...s, ranked: ev.ranked, positionEval: ev.positionEval };
     case "review":
       return { ...s, review: ev.rows, finalEval: ev.finalEval, phase: "done", status: "" };
+    case "reviewSaved":
+      return { ...s, reviewId: ev.id };
     case "done":
       return { ...s, phase: "done", status: "" };
     case "error":

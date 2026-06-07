@@ -11,6 +11,7 @@ interface Props {
   activeIndex?: number | null;
   onContactChange: (name: string) => void;
   onSend: (text: string, sender: Sender) => void;
+  onNewChat: () => void;
 }
 
 export function ChatPane({
@@ -21,6 +22,7 @@ export function ChatPane({
   activeIndex,
   onContactChange,
   onSend,
+  onNewChat,
 }: Props) {
   const [draft, setDraft] = useState("");
   // Default: a typed message is from the OTHER person (you read their texts and
@@ -82,17 +84,35 @@ export function ChatPane({
             </svg>
           </div>
         </div>
-        {/* video call icon */}
-        <svg width="22" height="22" viewBox="0 0 24 24" className="text-[#0a84ff]">
-          <rect x="2.5" y="6.5" width="12" height="11" rx="2.5" stroke="currentColor"
-            strokeWidth="1.8" fill="none" />
-          <path d="M15 10l5-3v10l-5-3" stroke="currentColor" strokeWidth="1.8" fill="none"
-            strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {/* new chat + video call icons */}
+        <div className="flex items-center gap-3 text-[#0a84ff]">
+          <button onClick={onNewChat} title="New chat" aria-label="New chat" className="hover:opacity-70">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 4h-7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+          </button>
+          <svg width="22" height="22" viewBox="0 0 24 24">
+            <rect x="2.5" y="6.5" width="12" height="11" rx="2.5" stroke="currentColor"
+              strokeWidth="1.8" fill="none" />
+            <path d="M15 10l5-3v10l-5-3" stroke="currentColor" strokeWidth="1.8" fill="none"
+              strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
       </div>
 
       {/* message list */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+        {messages.length === 0 && (
+          <div className="mt-16 flex flex-col items-center gap-1 px-8 text-center text-[13px] text-default-400">
+            <span className="font-medium text-default-500">New conversation</span>
+            <span>
+              Type messages below (toggle who each is from), or paste a WhatsApp / Telegram
+              chat from the Stockfish panel.
+            </span>
+          </div>
+        )}
         <div className="flex flex-col gap-1.5">
           {messages.map((m, i) => {
             const mine = m.sender === "me";

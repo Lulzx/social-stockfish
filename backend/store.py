@@ -98,6 +98,20 @@ class Store:
     async def recent(self, limit: int = 20) -> list[dict[str, Any]]:
         return await asyncio.to_thread(self._recent_sync, max(1, min(limit, 200)))
 
+    def _get_sync(self, row_id: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            r = conn.execute("SELECT * FROM analyses WHERE id = ?", (row_id,)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["messages"] = json.loads(d["messages"]) if d["messages"] else []
+        d["ranked"] = json.loads(d["ranked"]) if d["ranked"] else None
+        return d
+
+    async def get(self, row_id: int) -> dict[str, Any] | None:
+        return await asyncio.to_thread(self._get_sync, row_id)
+
     def _count_sync(self) -> int:
         with self._connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM analyses").fetchone()[0])
